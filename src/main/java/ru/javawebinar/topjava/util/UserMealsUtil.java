@@ -12,6 +12,8 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 public class UserMealsUtil {
 
@@ -29,18 +31,20 @@ public class UserMealsUtil {
         final var mealsTo = filteredByCyclesV2(meals, LocalTime.of(7, 0), LocalTime.of(12, 0), 2000);
         mealsTo.forEach(System.out::println);
 
+        final var mealWithOptional = cyclesWithOptional(meals, LocalTime.of(7, 0), LocalTime.of(12, 0), 2000);
+        mealWithOptional.ifPresent(System.out::println);
 
-//        System.out.println(filteredByStreams(meals, LocalTime.of(7, 0), LocalTime.of(12, 0), 2000));
+        System.out.println(filteredByStreams(meals, LocalTime.of(7, 0), LocalTime.of(12, 0), 2000));
     }
 
     public static List<UserMealWithExcess> filteredByCycles(final List<UserMeal> meals,
                                                             final LocalTime startTime, final LocalTime endTime,
                                                             final int caloriesPerDay
     ) {
-        final Map<LocalDate, Integer> caloriesForEveryDay = new HashMap<>();
+        final Map<LocalDate, Integer> caloriesForDay = new HashMap<>();
         for (final UserMeal meal : meals) {
             final var localDate = meal.getDateTime().toLocalDate();
-            caloriesForEveryDay.put(localDate, caloriesForEveryDay.getOrDefault(localDate, 0) + meal.getCalories());
+            caloriesForDay.put(localDate, caloriesForDay.getOrDefault(localDate, 0) + meal.getCalories());
         }
 
         final List<UserMealWithExcess> result = new ArrayList<>();
@@ -50,7 +54,7 @@ public class UserMealsUtil {
 
             if (TimeUtil.isBetweenHalfOpen(localTime, startTime, endTime)) {
                 final var localDate = dateTime.toLocalDate();
-                final var excessResult = caloriesForEveryDay.get(localDate) >= caloriesPerDay;
+                final var excessResult = caloriesForDay.get(localDate) >= caloriesPerDay;
 
                 result.add(new UserMealWithExcess(dateTime, meal.getDescription(), meal.getCalories(), excessResult));
             }
@@ -59,16 +63,17 @@ public class UserMealsUtil {
         return result;
     }
 
+    // Написал этот метод чисто для Д/З, через метод merge
     public static List<UserMealWithExcess> filteredByCyclesV2(final List<UserMeal> meals,
                                                               final LocalTime startTime, final LocalTime endTime,
                                                               final int caloriesPerDay
     ) {
-        final Map<LocalDate, Integer> caloriesForEveryDay = new HashMap<>();
+        final Map<LocalDate, Integer> caloriesForDay = new HashMap<>();
         for (final UserMeal meal : meals) {
             final LocalDateTime dateTime = meal.getDateTime();
             final LocalDate localDate = dateTime.toLocalDate();
             final int calories = meal.getCalories();
-            caloriesForEveryDay.merge(localDate, calories, Integer::sum);
+            caloriesForDay.merge(localDate, calories, Integer::sum);
         }
 
         final List<UserMealWithExcess> result = new ArrayList<>();
@@ -78,7 +83,7 @@ public class UserMealsUtil {
 
             if (TimeUtil.isBetweenHalfOpen(localTime, startTime, endTime)) {
                 final LocalDate localDate = dateTime.toLocalDate();
-                final boolean excessResult = caloriesForEveryDay.get(localDate) >= caloriesPerDay;
+                final boolean excessResult = caloriesForDay.get(localDate) >= caloriesPerDay;
 
                 result.add(new UserMealWithExcess(dateTime, meal.getDescription(), meal.getCalories(), excessResult));
             }
@@ -87,8 +92,43 @@ public class UserMealsUtil {
         return result;
     }
 
-    public static List<UserMealWithExcess> filteredByStreams(List<UserMeal> meals, LocalTime startTime, LocalTime endTime, int caloriesPerDay) {
-        // TODO Implement by streams
-        return null;
+    public static Optional<List<UserMealWithExcess>> cyclesWithOptional(final List<UserMeal> meals,
+                                                                        final LocalTime startTime, final LocalTime endTime,
+                                                                        final int caloriesPerDay
+    ) {
+        List<UserMealWithExcess> result = filteredByCycles(meals, startTime, endTime, caloriesPerDay);
+        return Optional.of(result);
+    }
+
+    public static List<UserMealWithExcess> filteredByStreams(final List<UserMeal> meals,
+                                                             final LocalTime startTime, final LocalTime endTime,
+                                                             final int caloriesPerDay
+    ) {
+        // Подсчет калорий за каждый день
+        final var caloriesForDay = meals.stream()
+                .collect(Collectors.groupingBy(meal ->
+                        meal.getDateTime().toLocalDate(), Collectors.summingInt(UserMeal::getCalories)));
+
+        // Фильтрация и преобразование в UserMealWithExcess
+        return meals.stream()
+                .filter(meal -> {
+                    final var localTime = meal.getDateTime().toLocalTime();
+                    return TimeUtil.isBetweenHalfOpen(localTime, startTime, endTime);
+                })
+                .map(meal -> {
+                    final var localDate = meal.getDateTime().toLocalDate();
+                    final var excessResult = caloriesForDay.get(localDate) >= caloriesPerDay;
+                    return new UserMealWithExcess(meal.getDateTime(), meal.getDescription(), meal.getCalories(), excessResult);
+                })
+                .collect(Collectors.toList());
+    }
+
+    public static Optional<List<UserMealWithExcess>> StreamsWithOptional(final List<UserMeal> meals,
+                                                                         final LocalTime startTime, final LocalTime endTime,
+                                                                         final int caloriesPerDay
+    ) {
+        // Получение отфильтрованного списка
+        final var result = filteredByStreams(meals, startTime, endTime, caloriesPerDay);
+        return result.isEmpty() ? Optional.empty() : Optional.of(result);
     }
 }
